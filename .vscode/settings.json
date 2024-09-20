@@ -1,0 +1,12 @@
+{
+    "files.insertFinalNewline": true,
+    "cSpell.words": [
+        "corestore",
+        "hyperbee",
+        "hypercore",
+        "hyperdht",
+        "hyperdrive",
+        "hyperswarm",
+        "localdrive"
+    ]
+}
