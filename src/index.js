@@ -7,6 +7,13 @@ import MirrorDrive from 'mirror-drive'
 import Corestore from 'corestore'
 import mime from 'mime'
 
+const CORESTORE_SEED_PATH = './.corestore'
+const CORESTORE_JOIN_PATH = './.corestore.read'
+
+/**
+ * @param {Hyperdrive} drive
+ * @returns {express.RequestHandler}
+ */
 const serveDrive = (drive) => (req, res, next) => {
   if (req.method !== 'GET') {
     return next()
@@ -79,7 +86,7 @@ export class Node {
 
     // Seed
     if (this._seed) {
-      const store = new Corestore('./.corestore')
+      const store = new Corestore(CORESTORE_SEED_PATH)
       await store.ready()
 
       const src = new Localdrive(this._seed)
@@ -96,7 +103,7 @@ export class Node {
 
       swarm.on('error', (err) => console.error('Swarm error:', err))
       swarm.on('connection', (conn) => drive.replicate(conn))
-      const discovery = swarm.join(drive.discoveryKey)
+      const discovery = swarm.join(drive.discoveryKey, { client: false, server: true })
       await discovery.flushed()
 
       app.use(serveDrive(drive))
@@ -106,7 +113,7 @@ export class Node {
     else if (this._join) {
       const key = Buffer.from(this._join, 'hex')
 
-      const store = new Corestore('/tmp/corestore-cli')
+      const store = new Corestore(CORESTORE_JOIN_PATH)
       await store.ready()
       const foundPeers = store.findingPeers()
 
@@ -117,8 +124,22 @@ export class Node {
 
       swarm.on('error', (err) => console.error('Swarm error:', err))
       swarm.on('connection', (conn) => drive.replicate(conn))
-      swarm.join(drive.discoveryKey)
+      swarm.join(drive.discoveryKey, { client: true, server: false })
       swarm.flush().then(() => foundPeers())
+
+      // https://docs.pears.com/building-blocks/hypercore#core.update
+      // This won't resolve until either
+      // - The first peer is found
+      // - No peers could be found
+      const updated = await drive.core.update({ wait: true })
+      console.info('Core length is', drive.core.length)
+      if (!drive.core.peers.length && !drive.core.length) {
+        console.warn('No peers found to initialize drive')
+        console.warn('This program will now stop')
+        return await this.destroy()
+      }
+
+      console.log('Core', updated ? 'updated' : 'was up to date')
 
       app.use(serveDrive(drive))
     }

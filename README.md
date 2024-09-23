@@ -24,3 +24,10 @@ node main.js --port 8080 --seed /path/to/seed
 ```bash
 node main.js --port 8080 --join <drive-key>
 ```
+
+
+#### With docker
+
+docker build . -t pears-cdn
+
+docker run -p 8080:8080 -e JOIN=<drive-key> pears-cdn
