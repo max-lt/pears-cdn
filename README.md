@@ -1,10 +1,14 @@
-# Using pears tools to serve static files
+# Using pears tools to serve static files over http
 
 ### Configuration
 
-#### Environment variables
+#### Environment variables / Command line arguments
 
-- `PORT` - The port to listen on. Default is 8080.
+- `PORT` / `--port` - The port to listen on. Default is 8080.
+- `SEED` / `--seed` - The path to the seed directory. Required if `join` is not set.
+- `JOIN` / `--join` - The drive key to join. Required if `seed` is not set.
+
+> Note: Command line arguments take precedence over environment variables.
 
 ### Usage
 
@@ -12,12 +16,11 @@
 
 use the following command to initialize a new drive and output a drive key that can be used to share the drive.
 ```bash
-npm start share <path>
+node main.js --port 8080 --seed /path/to/seed
 ```
-
 
 #### Connect to the drive
 
 ```bash
-npm start join <drive-key>
+node main.js --port 8080 --join <drive-key>
 ```

@@ -7,15 +7,6 @@ import MirrorDrive from 'mirror-drive'
 import Corestore from 'corestore'
 import mime from 'mime'
 
-const args = process.argv.slice(2)
-
-const port = parseInt(process.env.PORT) || 8080
-
-const dht = new DHT()
-const swarm = new Hyperswarm({ dht })
-
-const app = express()
-
 const serveDrive = (drive) => (req, res, next) => {
   if (req.method !== 'GET') {
     return next()
@@ -46,20 +37,52 @@ const serveDrive = (drive) => (req, res, next) => {
     })
 }
 
-// Usage: npm start -- <share path|join key> [--port 8520]
-switch (args[0]) {
-  case 'share':
-    {
-      const path = args[1] ?? null
-      if (!path) {
-        console.error('No path specified')
-        process.exit(1)
-      }
+export class Node {
+  get isSeed() {
+    return !!this._seed
+  }
 
+  get isJoin() {
+    return !!this._join
+  }
+
+  /**
+   * @param {String | null} seed - Path to seed directory
+   * @param {String | null} join - Join key
+   * @param {Number | null} port
+   */
+  constructor(seed, join, port) {
+    this._seed = seed
+    this._join = join
+    this._port = port
+
+    /** @type {express.Application | null} */
+    this._app = null
+    /** @type {DHT | null} */
+    this._dht = null
+    /** @type {Hyperswarm | null} */
+    this._swarm = null
+    /** @type {import('http').Server | null} */
+    this._server = null
+  }
+
+  async start() {
+    const app = express()
+    const dht = new DHT()
+    const swarm = new Hyperswarm({ dht })
+
+    this._app = app
+    this._dht = dht
+    this._swarm = swarm
+
+    const port = this._port || 8080
+
+    // Seed
+    if (this._seed) {
       const store = new Corestore('./.corestore')
       await store.ready()
 
-      const src = new Localdrive(path)
+      const src = new Localdrive(this._seed)
       await src.ready()
 
       const drive = new Hyperdrive(store)
@@ -77,54 +100,43 @@ switch (args[0]) {
       await discovery.flushed()
 
       app.use(serveDrive(drive))
-      app.listen(port, () => console.log(`Listening on http://localhost:${port}`))
     }
-    break
-  case 'join':
-    {
-      const key = args[1] ?? null
-      if (!key) {
-        console.error('No key specified')
-        process.exit(1)
-      }
 
-      if (/^[0-9a-f]{64}$/.test(key) === false) {
-        console.error('Invalid key')
-        process.exit(1)
-      }
+    // Join
+    else if (this._join) {
+      const key = Buffer.from(this._join, 'hex')
 
       const store = new Corestore('/tmp/corestore-cli')
       await store.ready()
+      const foundPeers = store.findingPeers()
 
       const drive = new Hyperdrive(store, key)
 
       await drive.ready()
-      console.log('drive.ready', drive.key.toString('hex'))
+      console.log('Joining', drive.key.toString('hex'))
 
       swarm.on('error', (err) => console.error('Swarm error:', err))
       swarm.on('connection', (conn) => drive.replicate(conn))
       swarm.join(drive.discoveryKey)
+      swarm.flush().then(() => foundPeers())
 
       app.use(serveDrive(drive))
-      app.listen(port, () => console.log(`Listening on http://localhost:${port}`))
     }
-    break
-  default:
-    console.error('Invalid command')
-    process.exit(1)
-}
 
-// Teardown - Handle shutdown
-let stopping = false
-process.on('SIGINT', teardown)
-process.on('SIGTERM', teardown)
-async function teardown() {
-  if (!stopping) {
-    console.log('Gracefully shutting down, press Ctrl+C again to force')
-    stopping = true
-    swarm.destroy()
-  } else {
-    console.log('Forcing shutdown')
-    process.exit(1)
+    this._server = app.listen(port, () => console.log(`Listening on http://localhost:${port}`))
+  }
+
+  async destroy() {
+    if (this._server) {
+      await new Promise((resolve) => this._server.close(resolve))
+    }
+
+    if (this._dht) {
+      await this._dht.destroy()
+    }
+
+    if (this._swarm) {
+      await this._swarm.destroy()
+    }
   }
 }
