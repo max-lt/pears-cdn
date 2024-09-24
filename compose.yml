@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  seed:
+    image: pears-cdn:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8080"
+    environment:
+      - SEED=/data
+      - PROXY_URL=http://localhost:8081
+      - CORESTORE_PATH=/corestore
+    volumes:
+      - corestore0:/corestore
+      - /path/to/data:/data
+
+  node1:
+    image: pears-cdn:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8082:8080"
+    environment:
+      - JOIN=<drive-key>
+      - PROXY_URL=http://localhost:8082
+      - CORESTORE_PATH=/corestore
+    volumes:
+      - corestore1:/corestore
+
+  node2:
+    image: pears-cdn:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8083:8080"
+    environment:
+      - JOIN=<drive-key>
+      - PROXY_URL=http://localhost:8083
+      - CORESTORE_PATH=/corestore
+    volumes:
+      - corestore2:/corestore
+
+volumes:
+  corestore0:
+  corestore1:
+  corestore2:

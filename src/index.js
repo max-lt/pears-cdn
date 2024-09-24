@@ -1,5 +1,5 @@
 import express from 'express'
-import DHT from 'hyperdht'
+import DHT from 'hyperdht' // https://docs.pears.com/building-blocks/hyperdht
 import Hyperswarm from 'hyperswarm'
 import Hyperdrive from 'hyperdrive'
 import Localdrive from 'localdrive'
@@ -7,8 +7,9 @@ import MirrorDrive from 'mirror-drive'
 import Corestore from 'corestore'
 import mime from 'mime'
 
-const CORESTORE_SEED_PATH = './.corestore'
-const CORESTORE_JOIN_PATH = './.corestore.read'
+const PROXY_URL = process.env.PROXY_URL
+const CORESTORE_SEED_PATH = process.env.CORESTORE_PATH || './.corestore.seed'
+const CORESTORE_JOIN_PATH = process.env.CORESTORE_PATH || './.corestore.read'
 
 /**
  * @param {Hyperdrive} drive
@@ -78,6 +79,8 @@ export class Node {
     const dht = new DHT()
     const swarm = new Hyperswarm({ dht })
 
+    await dht.ready()
+
     this._app = app
     this._dht = dht
     this._swarm = swarm
@@ -136,7 +139,7 @@ export class Node {
       if (!drive.core.peers.length && !drive.core.length) {
         console.warn('No peers found to initialize drive')
         console.warn('This program will now stop')
-        return await this.destroy()
+        return await this.destroy().then(() => process.exit(1))
       }
 
       console.log('Core', updated ? 'updated' : 'was up to date')
@@ -144,7 +147,8 @@ export class Node {
       app.use(serveDrive(drive))
     }
 
-    this._server = app.listen(port, () => console.log(`Listening on http://localhost:${port}`))
+    const url = PROXY_URL || `http://localhost:${port}`
+    this._server = app.listen(port, () => console.log(`Listening on ${url}`))
   }
 
   async destroy() {

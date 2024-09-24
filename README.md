@@ -28,6 +28,10 @@ node main.js --port 8080 --join <drive-key>
 
 #### With docker
 
+```bash
 docker build . -t pears-cdn
+```
 
+```bash
 docker run -p 8080:8080 -e JOIN=<drive-key> pears-cdn
+```
