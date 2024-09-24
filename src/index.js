@@ -3,9 +3,10 @@ import DHT from 'hyperdht' // https://docs.pears.com/building-blocks/hyperdht
 import Hyperswarm from 'hyperswarm'
 import Hyperdrive from 'hyperdrive'
 import Localdrive from 'localdrive'
-import MirrorDrive from 'mirror-drive'
 import Corestore from 'corestore'
 import mime from 'mime'
+import { watch } from 'fs'
+import debounceify from 'debounceify'
 
 const PROXY_URL = process.env.PROXY_URL
 const CORESTORE_SEED_PATH = process.env.CORESTORE_PATH || './.corestore.seed'
@@ -72,6 +73,8 @@ export class Node {
     this._swarm = null
     /** @type {import('http').Server | null} */
     this._server = null
+    /** @type {AbortController | null} */
+    this._ac = null
   }
 
   async start() {
@@ -81,6 +84,7 @@ export class Node {
 
     await dht.ready()
 
+    this._ac = new AbortController()
     this._app = app
     this._dht = dht
     this._swarm = swarm
@@ -92,22 +96,29 @@ export class Node {
       const store = new Corestore(CORESTORE_SEED_PATH)
       await store.ready()
 
-      const src = new Localdrive(this._seed)
-      await src.ready()
-
       const drive = new Hyperdrive(store)
       await drive.ready()
       console.log('Drive key', drive.key.toString('hex'))
 
-      const mirror = new MirrorDrive(src, drive)
-      await mirror.done()
+      const mirror = debounceify(async () => {
+        const src = new Localdrive(this._seed)
+        await src.ready()
 
-      console.log(mirror.count)
+        const mirror = src.mirror(drive)
+        await mirror.done()
+
+        console.log('Mirror', mirror.count)
+      })
+
+      await mirror()
 
       swarm.on('error', (err) => console.error('Swarm error:', err))
       swarm.on('connection', (conn) => drive.replicate(conn))
       const discovery = swarm.join(drive.discoveryKey, { client: false, server: true })
       await discovery.flushed()
+
+      // Watch for changes
+      watch(path, { signal: this._ac.signal, recursive: true }, mirror)
 
       app.use(serveDrive(drive))
     }
@@ -152,6 +163,10 @@ export class Node {
   }
 
   async destroy() {
+    if (this._ac) {
+      this._ac.abort()
+    }
+
     if (this._server) {
       await new Promise((resolve) => this._server.close(resolve))
     }

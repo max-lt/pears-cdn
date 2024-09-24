@@ -2,6 +2,7 @@
     "files.insertFinalNewline": true,
     "cSpell.words": [
         "corestore",
+        "debounceify",
         "hyperbee",
         "hypercore",
         "hyperdht",
