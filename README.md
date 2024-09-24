@@ -25,7 +25,6 @@ node main.js --port 8080 --seed /path/to/seed
 node main.js --port 8080 --join <drive-key>
 ```
 
-
 #### With docker
 
 ```bash
@@ -33,5 +32,9 @@ docker build . -t pears-cdn
 ```
 
 ```bash
+# Use the local image
 docker run -p 8080:8080 -e JOIN=<drive-key> pears-cdn
+
+# Or the prebuilt image
+docker run -p 8080:8080 -e JOIN=<drive-key> ghcr.io/max-lt/pears-cdn 
 ```

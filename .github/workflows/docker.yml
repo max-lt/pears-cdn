@@ -5,6 +5,11 @@ on:
     branches: [ master ]
     tags:
       - 'v*.*.*'
+    paths: 
+      - 'main.js'
+      - 'src/**.js'
+      - 'package*.json'
+      - 'Dockerfile'
   pull_request:
     branches: [ master ]
 
