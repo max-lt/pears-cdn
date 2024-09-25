@@ -46,6 +46,35 @@ const serveDrive = (drive) => (req, res, next) => {
     })
 }
 
+/**
+ *
+ * @param {PeerDiscovery} discovery
+ * @param {AbortSignal} signal
+ */
+const startPeerRefresh = (discovery, signal) => {
+  let t = null
+  let p = discovery.swarm.connections.size // Previous connections count
+
+  const refresh = debounceify(async () => {
+    await discovery.refresh()
+
+    const c = discovery.swarm.connections.size // Current connections count
+    if (!!c ^ !!p) {
+      console.info('Discovery refreshed and found', c ? c : 'no', 'peers')
+    }
+
+    t = setTimeout(refresh, c ? 60_000 : 5_000)
+
+    p = c
+  })
+
+  t = setTimeout(refresh, 60_000)
+
+  signal.addEventListener('abort', () => clearTimeout(t))
+
+  return refresh
+}
+
 export class Node {
   get isSeed() {
     return !!this._seed
@@ -89,6 +118,7 @@ export class Node {
     this._dht = dht
     this._swarm = swarm
 
+    const signal = this._ac.signal
     const port = this._port || 8080
 
     // Seed
@@ -118,7 +148,7 @@ export class Node {
       await discovery.flushed()
 
       // Watch for changes
-      watch(path, { signal: this._ac.signal, recursive: true }, mirror)
+      watch(this._seed, { signal, recursive: true }, mirror)
 
       app.use(serveDrive(drive))
     }
@@ -138,7 +168,7 @@ export class Node {
 
       swarm.on('error', (err) => console.error('Swarm error:', err))
       swarm.on('connection', (conn) => drive.replicate(conn))
-      swarm.join(drive.discoveryKey, { client: true, server: false })
+      const discovery = swarm.join(drive.discoveryKey, { client: true, server: true })
       swarm.flush().then(() => foundPeers())
 
       // https://docs.pears.com/building-blocks/hypercore#core.update
@@ -154,6 +184,16 @@ export class Node {
       }
 
       console.log('Core', updated ? 'updated' : 'was up to date')
+
+      // Watch for new peers
+      const refresh = startPeerRefresh(discovery, signal)
+      drive.core.on('peer-remove', () => {
+        // If no peers are left, refresh immediately
+        if (!discovery.swarm.connections.size && !signal.aborted) {
+          console.warn('No peers left, refreshing discovery')
+          refresh()
+        }
+      })
 
       app.use(serveDrive(drive))
     }
