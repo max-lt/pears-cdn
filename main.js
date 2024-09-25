@@ -8,7 +8,8 @@ const args = commandLineArgs([
   { name: 'port', alias: 'p', type: Number },
   { name: 'join', type: String },
   { name: 'seed', type: String },
-  { name: 'full', type: Boolean }
+  { name: 'full', type: Boolean },
+  { name: 'cors', type: String, multiple: true }
 ])
 
 // Environment variables
@@ -16,13 +17,15 @@ const envs = {
   port: process.env.PORT,
   join: process.env.JOIN,
   seed: process.env.SEED,
-  full: process.env.FULL === 'true'
+  full: process.env.FULL === 'true',
+  cors: process.env.CORS?.split(',')
 }
 
 const port = args.port ?? envs.port
 const join = args.join ?? envs.join
 const seed = args.seed ?? envs.seed
 const full = args.full ?? envs.full
+const cors = args.cors ?? envs.cors
 
 if (!join && !seed) {
   console.error('You must specify either a join key or a seed path')
@@ -49,7 +52,7 @@ if (seed && !fs.statSync(seed).isDirectory()) {
   process.exit(1)
 }
 
-const node = new Node(seed, join, port, full)
+const node = new Node(seed, join, port, full, cors)
 
 node.start().catch((err) => {
   console.error('Failed to start node:', err)

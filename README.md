@@ -8,6 +8,7 @@
 - `SEED` / `--seed` - The path to the seed directory. Required if `join` is not set.
 - `JOIN` / `--join` - The drive key to join. Required if `seed` is not set.
 - `FULL` / `--full` - In replica mode (join), this flag will download all files from the drive. Default is false.
+- `CORS` / `--cors` - Allowed origins for CORS. Default is none.
 
 > Note: Command line arguments take precedence over environment variables.
 

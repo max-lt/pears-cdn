@@ -4,6 +4,7 @@ import Hyperswarm from 'hyperswarm'
 import Hyperdrive from 'hyperdrive'
 import Localdrive from 'localdrive'
 import Corestore from 'corestore'
+import cors from 'cors'
 import mime from 'mime'
 import { watch } from 'fs'
 import debounceify from 'debounceify'
@@ -85,47 +86,53 @@ export class Node {
   }
 
   get isFullReplica() {
-    return !!this._join && !!this._full
+    return !!this._join && this._full
   }
 
   /**
    * @param {String | null} seed - Path to seed directory
    * @param {String | null} join - Join key
    * @param {Number | null} port
-   * @param {Number | null} full - Full replication - replica node will pull all data
+   * @param {Boolean | null} full - Full replication - replica node will pull all data
+   * @param {String | String[] | null} origin - Allowed origin for CORS
    */
-  constructor(seed, join, port, full = false) {
+  constructor(seed, join, port, full = false, origin = null) {
     this._seed = seed
     this._join = join
     this._port = port
     this._full = full
 
-    /** @type {express.Application | null} */
-    this._app = null
+    const app = express()
+
+    if (origin) {
+      app.use(cors({ origin, methods: 'GET' }))
+    }
+
+    /** @type {express.Application} */
+    this._app = app
+    /** @type {AbortController} */
+    this._ac = new AbortController()
+
     /** @type {DHT | null} */
     this._dht = null
     /** @type {Hyperswarm | null} */
     this._swarm = null
     /** @type {import('http').Server | null} */
     this._server = null
-    /** @type {AbortController | null} */
-    this._ac = null
   }
 
   async start() {
-    const app = express()
     const dht = new DHT()
     const swarm = new Hyperswarm({ dht })
 
     await dht.ready()
 
-    this._ac = new AbortController()
-    this._app = app
     this._dht = dht
     this._swarm = swarm
 
-    const signal = this._ac.signal
+    const app = this._app
     const port = this._port || 8080
+    const signal = this._ac.signal
 
     // Seed
     if (this._seed) {
@@ -217,9 +224,7 @@ export class Node {
   }
 
   async destroy() {
-    if (this._ac) {
-      this._ac.abort()
-    }
+    this._ac.abort()
 
     if (this._server) {
       await new Promise((resolve) => this._server.close(resolve))
