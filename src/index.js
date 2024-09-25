@@ -80,19 +80,25 @@ export class Node {
     return !!this._seed
   }
 
-  get isJoin() {
+  get isReplica() {
     return !!this._join
+  }
+
+  get isFullReplica() {
+    return !!this._join && !!this._full
   }
 
   /**
    * @param {String | null} seed - Path to seed directory
    * @param {String | null} join - Join key
    * @param {Number | null} port
+   * @param {Number | null} full - Full replication - replica node will pull all data
    */
-  constructor(seed, join, port) {
+  constructor(seed, join, port, full = false) {
     this._seed = seed
     this._join = join
     this._port = port
+    this._full = full
 
     /** @type {express.Application | null} */
     this._app = null
@@ -153,7 +159,7 @@ export class Node {
       app.use(serveDrive(drive))
     }
 
-    // Join
+    // Replica
     else if (this._join) {
       const key = Buffer.from(this._join, 'hex')
 
@@ -184,6 +190,14 @@ export class Node {
       }
 
       console.log('Core', updated ? 'updated' : 'was up to date')
+
+      if (this._full) {
+        console.log('Full replication enabled, pulling all data, this may take a while...')
+
+        await drive.download()
+
+        console.log('Download complete')
+      }
 
       // Watch for new peers
       const refresh = startPeerRefresh(discovery, signal)
