@@ -6,8 +6,9 @@ import Localdrive from 'localdrive'
 import Corestore from 'corestore'
 import cors from 'cors'
 import mime from 'mime'
-import { watch } from 'fs'
 import debounceify from 'debounceify'
+import { watch } from 'fs'
+import { now } from './util.js'
 
 const PROXY_URL = process.env.PROXY_URL
 const CORESTORE_SEED_PATH = process.env.CORESTORE_PATH || './.corestore.seed'
@@ -26,22 +27,33 @@ const serveDrive = (drive) => (req, res, next) => {
     return res.redirect(req.path + 'index.html')
   }
 
-  console.log('GET', req.path)
+  console.info(now(), 'GET', req.path)
 
   drive
-    .exists(req.path)
-    .then((exists) => {
-      if (!exists) {
+    .entry(req.path)
+    .then((entry) => {
+      if (!entry) {
         res.setHeader('Content-Type', 'text/plain')
         return res.status(404).send('Not found')
       }
 
+      const etag = `W/"${entry.seq}"`
+
+      if (req.headers['if-none-match'] === etag) {
+        res.status(304).end()
+        return
+      }
+
       const stream = drive.createReadStream(req.path)
+      res.setHeader('Content-Length', entry.value.blob.byteLength)
+      res.setHeader('Cache-Control', 'public, max-age=300, s-maxage=3600')
+      res.setHeader('ETag', etag)
       res.setHeader('Content-Type', mime.getType(req.path))
+      stream.on('error', (err) => console.error(now(), 'Stream error:', err))
       stream.pipe(res)
     })
     .catch((err) => {
-      console.error(err)
+      console.error(now(), 'Failed to serve', req.path, err)
       res.setHeader('Content-Type', 'text/plain')
       res.status(500).send('Internal server error')
     })
@@ -57,11 +69,15 @@ const startPeerRefresh = (discovery, signal) => {
   let p = discovery.swarm.connections.size // Previous connections count
 
   const refresh = debounceify(async () => {
+    if (signal.aborted) {
+      return
+    }
+
     await discovery.refresh()
 
     const c = discovery.swarm.connections.size // Current connections count
     if (!!c ^ !!p) {
-      console.info('Discovery refreshed and found', c ? c : 'no', 'peers')
+      console.info(now(), 'Discovery refreshed and found', c ? c : 'no', 'peers')
     }
 
     t = setTimeout(refresh, c ? 60_000 : 5_000)
@@ -104,6 +120,8 @@ export class Node {
 
     const app = express()
 
+    app.set('x-powered-by', false)
+
     if (origin) {
       app.use(cors({ origin, methods: 'GET' }))
     }
@@ -141,7 +159,7 @@ export class Node {
 
       const drive = new Hyperdrive(store)
       await drive.ready()
-      console.log('Drive key', drive.key.toString('hex'))
+      console.info(now(), 'Drive key', drive.key.toString('hex'))
 
       const mirror = debounceify(async () => {
         const src = new Localdrive(this._seed)
@@ -150,12 +168,12 @@ export class Node {
         const mirror = src.mirror(drive)
         await mirror.done()
 
-        console.log('Mirror', mirror.count)
+        console.info(now(), 'Mirror', mirror.count)
       })
 
       await mirror()
 
-      swarm.on('error', (err) => console.error('Swarm error:', err))
+      swarm.on('error', (err) => console.error(now(), 'Swarm error:', err))
       swarm.on('connection', (conn) => drive.replicate(conn))
       const discovery = swarm.join(drive.discoveryKey, { client: false, server: true })
       await discovery.flushed()
@@ -177,9 +195,9 @@ export class Node {
       const drive = new Hyperdrive(store, key)
 
       await drive.ready()
-      console.log('Joining', drive.key.toString('hex'))
+      console.info(now(), 'Joining', drive.key.toString('hex'))
 
-      swarm.on('error', (err) => console.error('Swarm error:', err))
+      swarm.on('error', (err) => console.error(now(), 'Swarm error:', err))
       swarm.on('connection', (conn) => drive.replicate(conn))
       const discovery = swarm.join(drive.discoveryKey, { client: true, server: true })
       swarm.flush().then(() => foundPeers())
@@ -189,21 +207,21 @@ export class Node {
       // - The first peer is found
       // - No peers could be found
       const updated = await drive.core.update({ wait: true })
-      console.info('Core length is', drive.core.length)
+      console.info(now(), 'Core length is', drive.core.length)
       if (!drive.core.peers.length && !drive.core.length) {
-        console.warn('No peers found to initialize drive')
-        console.warn('This program will now stop')
+        console.warn(now(), 'No peers found to initialize drive')
+        console.warn(now(), 'This program will now stop')
         return await this.destroy().then(() => process.exit(1))
       }
 
-      console.log('Core', updated ? 'updated' : 'was up to date')
+      console.info(now(), 'Core', updated ? 'updated' : 'was up to date')
 
       if (this._full) {
-        console.log('Full replication enabled, pulling all data, this may take a while...')
+        console.info(now(), 'Full replication enabled, pulling all data, this may take a while...')
 
         await drive.download()
 
-        console.log('Download complete')
+        console.info(now(), 'Download complete')
       }
 
       // Watch for new peers
@@ -211,7 +229,7 @@ export class Node {
       drive.core.on('peer-remove', () => {
         // If no peers are left, refresh immediately
         if (!discovery.swarm.connections.size && !signal.aborted) {
-          console.warn('No peers left, refreshing discovery')
+          console.warn(now(), 'No peers left, refreshing discovery')
           refresh()
         }
       })
@@ -220,7 +238,7 @@ export class Node {
     }
 
     const url = PROXY_URL || `http://localhost:${port}`
-    this._server = app.listen(port, () => console.log(`Listening on ${url}`))
+    this._server = app.listen(port, () => console.log(now(), `Listening on ${url}`))
   }
 
   async destroy() {

@@ -2,6 +2,7 @@ import fs from 'fs'
 import commandLineArgs from 'command-line-args'
 
 import { Node } from './src/index.js'
+import { now } from './src/util.js'
 
 // Command line arguments
 const args = commandLineArgs([
@@ -66,11 +67,11 @@ process.on('SIGINT', teardown)
 process.on('SIGTERM', teardown)
 async function teardown() {
   if (!stopping) {
-    console.log('\rGracefully shutting down, press Ctrl+C again to force')
+    console.info('\r' + now(), 'Gracefully shutting down, press Ctrl+C again to force')
     stopping = true
     node.destroy()
   } else {
-    console.log('\rForcing shutdown')
+    console.info('\r' + now(), 'Forcing shutdown')
     process.exit(1)
   }
 }
